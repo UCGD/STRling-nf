@@ -1,68 +1,5 @@
 nextflow.enable.dsl=2
 
-params.help = false
-if (params.help) {
-    log.info """
-    -----------------------------------------------------------------------
-
-    STRling-nf
-    ==========
-
-    Documentation and issues can be found at:
-    https://github.com/quinlan-lab/STRling-nf
-
-    Required arguments:
-    -------------------
-    --crams               Aligned sequences in .bam and/or .cram format.
-                          Indexes (.bai/.crai) must be present.
-    --reference           Reference FASTA. Index (.fai) must exist in same
-                          directory.
-
-    Optional:
-    -------------------
-    --joint               Perform joint calling and find outliers.
-                          Default: false
-    --proportion_repeat   Proportion of read that is repetitive to be considered as STR.
-                          Default: 0.8
-
-    // extract and call
-    --min_mapq            Minimum mapping quality (does not apply to STR reads).
-                          Default: 40
-    --min_support         Minimum number of supporting reads for a locus to be reported
-                          Default: 5
-    --min_clip            Minimum number of supporting clipped reads for each side of a locus
-                          Default: 0
-    --min_clip_total      Minimum total number of supporting clipped reads for a locus
-                          Default: 0
-
-    // merge
-    --window              Number of bp within which to search for reads supporting the
-                          other side of a bound. Estimated from the insert size distribution
-                          by default.
-                          Default: -1
-
-    // outliers
-    --control             Input file for median and standard deviation estimates at
-                          each locus from a set of control samples. This file can be
-                          produced by this script using the emit option. If this
-                          option is not set, all samples in the current batch will
-                          be used as controls by default.
-                          Default: false
-    --slop                Merge loci that are within this many bp of each other and
-                          have the same repeat unit.
-                          Default: 50
-    --min_clips           In the individual sample files, only report loci with at
-                          least many soft-clipped reads in that sample.
-                          Default: 0
-    --min_size            In the individual sample files, only report loci with at
-                          least this allele2_est size in that sample.
-                          Default: 0
-
-    -----------------------------------------------------------------------
-    """.stripIndent()
-    exit 0
-}
-
 params.crams = false
 params.reference = false
 
@@ -73,26 +10,11 @@ if(!params.reference) {
     exit 1, "--reference argument is required"
 }
 
-process strling_index {
-    input:
-    path(reference)
-    path(fai)
-
-    output:
-    path("${reference}.str"), emit: str
-
-    script:
-    """
-    strling index $reference -g ${reference}.str
-    """
-}
-
 process strling_extract {
     input:
     tuple val(sample), path(cram), path(crai)
     path(reference)
     path(fai)
-    path(str)
     val(proportion_repeat)
     val(min_mapq)
 
@@ -102,7 +24,7 @@ process strling_extract {
 
     script:
     """
-    strling extract -f $reference -g $str -p $proportion_repeat -q $min_mapq $cram ${sample}.bin
+    strling extract -f $reference -g ${params.str_index} -p $proportion_repeat -q $min_mapq $cram ${sample}.bin
     """
 }
 
@@ -182,48 +104,33 @@ workflow {
         .map { file -> tuple(file.simpleName, file, file + ("${file}".endsWith('.cram') ? '.crai' : '.bai')) }
     fai = "${params.reference}.fai"
 
-    strling_index(params.reference, fai)
     strling_extract(
         crams,
         params.reference,
         fai,
-        strling_index.out.str,
         params.proportion_repeat,
         params.min_mapq
     )
-    if (params.joint) {
-        strling_merge(
-            strling_extract.out.bin_only.collect(),
-            params.reference,
-            fai,
-            params.window,
-            params.min_support,
-            params.min_clip,
-            params.min_clip_total,
-            params.min_mapq
-        )
-        strling_call(
-            strling_extract.out.bin,
-            params.reference,
-            fai,
-            strling_merge.out.bounds,
-            params.min_mapq,
-            params.min_support,
-            params.min_clip,
-            params.min_clip_total
-        )
-    } else {
-        strling_call(
-            strling_extract.out.bin,
-            params.reference,
-            fai,
-            [],
-            params.min_mapq,
-            params.min_support,
-            params.min_clip,
-            params.min_clip_total
-        )
-    }
+    strling_merge(
+        strling_extract.out.bin_only.collect(),
+        params.reference,
+        fai,
+        params.window,
+        params.min_support,
+        params.min_clip,
+        params.min_clip_total,
+        params.min_mapq
+    )
+    strling_call(
+        strling_extract.out.bin,
+        params.reference,
+        fai,
+        strling_merge.out.bounds,
+        params.min_mapq,
+        params.min_support,
+        params.min_clip,
+        params.min_clip_total
+    )
     strling_outliers(
         strling_call.out.genotypes.collect(),
         strling_call.out.unplaced.collect(),
