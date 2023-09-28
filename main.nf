@@ -50,6 +50,8 @@ process strling_merge {
 }
 
 process strling_call {
+    publishDir "${params.strling_call_outdir}/"${sample}_outliers", mode: 'link'
+
     input:
     tuple val(sample), path(cram), path(crai), path(bin)
     path(reference)
@@ -74,7 +76,7 @@ process strling_call {
 }
 
 process strling_outliers {
-    publishDir "${params.outdir}/outliers", mode: 'symlink'
+    publishDir "${params.outliers_outdir}/outliers", mode: 'link'
 
     input:
     path(genotypes)
