@@ -50,7 +50,7 @@ process strling_merge {
 }
 
 process strling_call {
-    publishDir "${params.strling_call_outdir}/"${sample}_outliers", mode: 'link'
+    publishDir "${params.strling_call_outdir}/${sample}_outliers", mode: 'link'
 
     input:
     tuple val(sample), path(cram), path(crai), path(bin)
